@@ -14,7 +14,7 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
+export const io = new Server(server, {
   cors: {
     origin: 'http://localhost:5173',
     methods: ['GET', 'POST'],
@@ -67,9 +67,12 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('chatMessage', async (message) => {
+  socket.on('chatMessage', async (message, callback) => {
     const username = users.get(socket.id);
-    if (!username) return;
+    if (!username) {
+      callback?.({ error: 'User not authenticated' });
+      return;
+    }
 
     try {
       const newMessage = new Message({
@@ -100,8 +103,11 @@ io.on('connection', (socket) => {
           timestamp: newMessage.timestamp.toISOString()
         });
       }
+
+      callback?.({ success: true }); // Acknowledge successful send
     } catch (err) {
       console.error('Error saving message:', err);
+      callback?.({ error: 'Failed to save message' });
     }
   });
 
@@ -134,6 +140,22 @@ io.on('connection', (socket) => {
 
   socket.on('checkUserOnline', (username, callback) => {
     callback(onlineUsers.has(username));
+  });
+
+  socket.on('joinGroup', async (groupId) => {
+    const username = users.get(socket.id);
+    if (!username) return;
+
+    try {
+      const group = await GroupChat.findById(groupId);
+      if (group && group.members.includes(username)) {
+        socket.join(groupId);
+        console.log(`${username} joined group ${group.name}`);
+        io.to(socket.id).emit('groupUpdated', group);
+      }
+    } catch (err) {
+      console.error('Error joining group:', err);
+    }
   });
 
   socket.on('disconnect', () => {

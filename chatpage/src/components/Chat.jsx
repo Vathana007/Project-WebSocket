@@ -34,6 +34,7 @@ const Chat = () => {
         error: null,
         success: false
     });
+    const [isSending, setIsSending] = useState(false); // Prevent duplicate sends
 
     // Refs
     const messagesEndRef = useRef(null);
@@ -60,12 +61,10 @@ const Chat = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, []);
 
-    // Sort chats by updatedAt in descending order
     const sortChats = (chatsToSort) => {
         return [...chatsToSort].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
     };
 
-    // Event handlers
     const handleClickOutside = useCallback((event) => {
         if (menuRef.current && !menuRef.current.contains(event.target)) {
             setShowMenu(false);
@@ -99,7 +98,6 @@ const Chat = () => {
 
         setSocket(socketConnection);
 
-        // Socket event handlers
         const handleConnect = () => {
             socketConnection.emit('join', username);
             if (activeChat) {
@@ -274,8 +272,9 @@ const Chat = () => {
 
     // Message handling
     const handleSendMessage = async () => {
-        if (!newMessage.trim() || !username || !activeChat) return;
+        if (!newMessage.trim() || !username || !activeChat || isSending) return;
 
+        setIsSending(true);
         const tempId = Date.now().toString();
         try {
             const tempMessage = {
@@ -291,31 +290,28 @@ const Chat = () => {
             updateChatLastMessage(activeChat, newMessage);
             scrollToBottom();
 
-            // Send to server
+            // Send to server via socket
             socket?.emit('chatMessage', {
                 text: newMessage,
                 chatId: activeChat
+            }, (response) => {
+                if (response?.error) {
+                    throw new Error(response.error);
+                }
             });
 
-            // Update group chat's lastMessage and updatedAt
-            await axios.post(`${API_BASE_URL}/messages`, {
-                text: newMessage,
-                sender: username,
-                chatId: activeChat,
-                timestamp: new Date()
-            });
-
-            // Clear typing indicator
+            // Clear input and typing indicator
             socket?.emit('stopTyping', activeChat);
             if (typingTimeoutRef.current) {
                 clearTimeout(typingTimeoutRef.current);
                 typingTimeoutRef.current = null;
             }
-
             setNewMessage('');
         } catch (err) {
             console.error('Error sending message:', err);
             setMessages(prev => prev.filter(msg => msg._id !== tempId));
+        } finally {
+            setIsSending(false);
         }
     };
 
@@ -353,7 +349,7 @@ const Chat = () => {
                     members: groupMembers
                 });
 
-                socket?.emit('joinGroup', response.data._id);
+                socket?.emit('joinGroup', response.data._id.toString());
 
                 const newChat = {
                     id: response.data._id.toString(),
@@ -812,8 +808,8 @@ const Chat = () => {
                         />
                         <button
                             onClick={handleSendMessage}
-                            disabled={!newMessage.trim()}
-                            className={`p-2 rounded-full ${newMessage.trim() ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-400'} cursor-pointer`}
+                            disabled={!newMessage.trim() || isSending}
+                            className={`p-2 rounded-full ${newMessage.trim() && !isSending ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-400'} cursor-pointer`}
                             aria-label="Send message"
                         >
                             <FiSend size={20} />
