@@ -16,7 +16,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:5173', // Matches your frontend
+    origin: 'http://localhost:5173',
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
   },
@@ -52,13 +52,19 @@ io.on('connection', (socket) => {
     io.emit('onlineUsers', Array.from(onlineUsers));
     console.log(`${username} joined the chat`);
 
+    // Join general chat by default
     socket.join('general');
 
-    const groups = await GroupChat.find({ members: username });
-    groups.forEach(group => {
-      socket.join(group._id.toString());
-      console.log(`${username} joined group ${group.name}`);
-    });
+    // Join all groups the user is a member of
+    try {
+      const groups = await GroupChat.find({ members: username });
+      groups.forEach(group => {
+        socket.join(group._id.toString());
+        console.log(`${username} joined group ${group.name}`);
+      });
+    } catch (err) {
+      console.error('Error joining groups:', err);
+    }
   });
 
   socket.on('chatMessage', async (message) => {
@@ -75,17 +81,25 @@ io.on('connection', (socket) => {
 
       await newMessage.save();
 
+      // Update the group chat's last message
       if (message.chatId && message.chatId !== 'general') {
         await GroupChat.findByIdAndUpdate(message.chatId, {
           lastMessage: message.text,
           updatedAt: new Date()
         });
+        
+        // Emit to all members of the group
+        io.to(message.chatId).emit('newMessage', {
+          ...newMessage.toObject(),
+          timestamp: newMessage.timestamp.toISOString()
+        });
+      } else {
+        // For general chat
+        io.to('general').emit('newMessage', {
+          ...newMessage.toObject(),
+          timestamp: newMessage.timestamp.toISOString()
+        });
       }
-
-      io.to(message.chatId || 'general').emit('newMessage', {
-        ...newMessage.toObject(),
-        timestamp: newMessage.timestamp.toISOString()
-      });
     } catch (err) {
       console.error('Error saving message:', err);
     }
@@ -137,4 +151,4 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
-}); 
+});

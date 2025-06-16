@@ -60,6 +60,11 @@ const Chat = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, []);
 
+    // Sort chats by updatedAt in descending order
+    const sortChats = (chatsToSort) => {
+        return [...chatsToSort].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    };
+
     // Event handlers
     const handleClickOutside = useCallback((event) => {
         if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -103,13 +108,18 @@ const Chat = () => {
         };
 
         const handleNewMessage = (message) => {
-            if (message.chatId === activeChat) {
+            const isCurrentChat = message.chatId === activeChat;
+            const isUserChat = chats.some(chat => chat.id === message.chatId);
+
+            if (isCurrentChat) {
                 setMessages(prev => [...prev, {
                     ...message,
                     timestamp: new Date(message.timestamp)
                 }]);
                 updateChatLastMessage(message.chatId, message.text);
                 scrollToBottom();
+            } else if (isUserChat) {
+                updateChatLastMessage(message.chatId, message.text);
             }
         };
 
@@ -122,18 +132,17 @@ const Chat = () => {
         };
 
         const handleGroupUpdated = (updatedGroup) => {
-            setChats(prev => prev.map(chat =>
+            setChats(prev => sortChats(prev.map(chat =>
                 chat.id === updatedGroup._id.toString()
-                    ? { ...chat, members: updatedGroup.members, updatedAt: new Date() }
+                    ? { ...chat, members: updatedGroup.members, updatedAt: new Date(updatedGroup.updatedAt) }
                     : chat
-            ));
+            )));
         };
 
         const handleConnectError = (err) => {
             console.error('Connection error:', err);
         };
 
-        // Register event listeners
         socketConnection.on('connect', handleConnect);
         socketConnection.on('newMessage', handleNewMessage);
         socketConnection.on('typing', handleTypingEvent);
@@ -143,7 +152,6 @@ const Chat = () => {
         socketConnection.on('connect_error', handleConnectError);
 
         return () => {
-            // Clean up event listeners
             socketConnection.off('connect', handleConnect);
             socketConnection.off('newMessage', handleNewMessage);
             socketConnection.off('typing', handleTypingEvent);
@@ -153,7 +161,7 @@ const Chat = () => {
             socketConnection.off('connect_error', handleConnectError);
             socketConnection.disconnect();
         };
-    }, [username, activeChat, scrollToBottom]);
+    }, [username, activeChat, chats, scrollToBottom]);
 
     useEffect(() => {
         if (activeChat) {
@@ -180,7 +188,7 @@ const Chat = () => {
                 unread: 0,
                 members: group.members,
                 isGroup: true,
-                updatedAt: group.updatedAt
+                updatedAt: new Date(group.updatedAt)
             }));
 
             if (!userGroups.some(chat => chat.id === 'general')) {
@@ -196,7 +204,7 @@ const Chat = () => {
                 });
             }
 
-            setChats(userGroups);
+            setChats(sortChats(userGroups));
             setActiveChat(userGroups[0]?.id || 'general');
         } catch (err) {
             console.error('Error loading groups:', err);
@@ -228,22 +236,22 @@ const Chat = () => {
                 const onlineMembers = await new Promise(resolve => {
                     socket.emit('getOnlineMembers', activeChat, resolve);
                 });
-                setChats(prev => prev.map(chat =>
+                setChats(prev => sortChats(prev.map(chat =>
                     chat.id === activeChat
                         ? { ...chat, lastSeen: `${onlineMembers?.length || 0} online` }
                         : chat
-                ));
+                )));
             } else {
                 const otherUser = currentChat.members?.find(m => m !== username);
                 if (otherUser) {
                     const isOnline = await new Promise(resolve => {
                         socket.emit('checkUserOnline', otherUser, resolve);
                     });
-                    setChats(prev => prev.map(chat =>
+                    setChats(prev => sortChats(prev.map(chat =>
                         chat.id === activeChat
                             ? { ...chat, lastSeen: isOnline ? 'Online' : 'Offline' }
                             : chat
-                    ));
+                    )));
                 }
             }
         } catch (err) {
@@ -252,7 +260,7 @@ const Chat = () => {
     };
 
     const updateChatLastMessage = (chatId, message) => {
-        setChats(prev => prev.map(chat =>
+        setChats(prev => sortChats(prev.map(chat =>
             chat.id === chatId
                 ? {
                     ...chat,
@@ -261,7 +269,7 @@ const Chat = () => {
                     updatedAt: new Date()
                 }
                 : chat
-        ));
+        )));
     };
 
     // Message handling
@@ -278,23 +286,26 @@ const Chat = () => {
                 timestamp: new Date()
             };
 
+            // Optimistic update
             setMessages(prev => [...prev, tempMessage]);
             updateChatLastMessage(activeChat, newMessage);
             scrollToBottom();
 
-            const response = await axios.post(`${API_BASE_URL}/messages`, {
+            // Send to server
+            socket?.emit('chatMessage', {
+                text: newMessage,
+                chatId: activeChat
+            });
+
+            // Update group chat's lastMessage and updatedAt
+            await axios.post(`${API_BASE_URL}/messages`, {
                 text: newMessage,
                 sender: username,
                 chatId: activeChat,
-                timestamp: new Date().toISOString(),
+                timestamp: new Date()
             });
 
-            setMessages(prev => prev.map(msg =>
-                msg._id === tempId
-                    ? { ...response.data, timestamp: new Date(response.data.timestamp) }
-                    : msg
-            ));
-
+            // Clear typing indicator
             socket?.emit('stopTyping', activeChat);
             if (typingTimeoutRef.current) {
                 clearTimeout(typingTimeoutRef.current);
@@ -354,7 +365,7 @@ const Chat = () => {
                     isGroup: true,
                     updatedAt: new Date()
                 };
-                setChats(prev => [...prev, newChat]);
+                setChats(prev => sortChats([...prev, newChat]));
                 setActiveChat(response.data._id.toString());
             } else {
                 const newChatId = `chat_${Date.now()}`;
@@ -368,7 +379,7 @@ const Chat = () => {
                     isGroup: false,
                     updatedAt: new Date()
                 };
-                setChats(prev => [...prev, newChat]);
+                setChats(prev => sortChats([...prev, newChat]));
                 setActiveChat(newChatId);
             }
 
@@ -403,18 +414,16 @@ const Chat = () => {
                 { username: newMember }
             );
 
-            setChats(prevChats =>
-                prevChats.map(chat =>
-                    chat.id === activeChat
-                        ? {
-                            ...chat,
-                            members: response.data.members,
-                            lastSeen: `${response.data.members.length} members`,
-                            updatedAt: new Date()
-                        }
-                        : chat
-                )
-            );
+            setChats(prev => sortChats(prev.map(chat =>
+                chat.id === activeChat
+                    ? {
+                        ...chat,
+                        members: response.data.members,
+                        lastSeen: `${response.data.members.length} members`,
+                        updatedAt: new Date()
+                    }
+                    : chat
+            )));
 
             setNewMember('');
             setMemberOperationStatus({ loading: false, error: null, success: true });
@@ -438,18 +447,16 @@ const Chat = () => {
                 { username: memberToRemove }
             );
 
-            setChats(prevChats =>
-                prevChats.map(chat =>
-                    chat.id === activeChat
-                        ? {
-                            ...chat,
-                            members: response.data.members,
-                            lastSeen: `${response.data.members.length} members`,
-                            updatedAt: new Date()
-                        }
-                        : chat
-                )
-            );
+            setChats(prev => sortChats(prev.map(chat =>
+                chat.id === activeChat
+                    ? {
+                        ...chat,
+                        members: response.data.members,
+                        lastSeen: `${response.data.members.length} members`,
+                        updatedAt: new Date()
+                    }
+                    : chat
+            )));
         } catch (error) {
             console.error('Error removing member:', error);
             alert(error.response?.data?.message || 'Failed to remove member');
@@ -473,11 +480,11 @@ const Chat = () => {
                     username: friendUsername
                 });
 
-                setChats(prev => prev.map(chat =>
+                setChats(prev => sortChats(prev.map(chat =>
                     chat.id === activeChat
                         ? { ...chat, members: [...new Set([...chat.members, friendUsername])] }
                         : chat
-                ));
+                )));
 
                 alert(`${friendUsername} added to the group!`);
             } else {
@@ -498,7 +505,7 @@ const Chat = () => {
                     updatedAt: new Date()
                 };
 
-                setChats(prev => [...prev, newChat]);
+                setChats(prev => sortChats([...prev, newChat]));
                 setActiveChat(response.data._id.toString());
                 setMessages([]);
                 socket?.emit('joinGroup', response.data._id);
@@ -1081,4 +1088,4 @@ const Chat = () => {
     );
 };
 
-export default Chat; 
+export default Chat;

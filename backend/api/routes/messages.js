@@ -1,5 +1,6 @@
 import express from 'express';
 import Message from '../models/Message.js';
+import GroupChat from '../models/GroupChat.js';
 
 const router = express.Router();
 
@@ -18,6 +19,15 @@ router.post('/', async (req, res) => {
       timestamp: timestamp ? new Date(timestamp) : new Date(),
     });
     await newMessage.save();
+
+    // Update group chat's lastMessage and updatedAt
+    if (chatId && chatId !== 'general') {
+      await GroupChat.findByIdAndUpdate(chatId, {
+        lastMessage: text,
+        updatedAt: new Date()
+      });
+    }
+
     res.status(201).json(newMessage);
   } catch (err) {
     console.error('Error saving message:', err);
@@ -31,7 +41,7 @@ router.get('/', async (req, res) => {
   try {
     const messages = await Message
       .find({ chatId })
-      .sort({ timestamp: 1 }); 
+      .sort({ timestamp: 1 });
     res.json(messages);
   } catch (err) {
     console.error('Error fetching messages:', err);
