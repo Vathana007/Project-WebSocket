@@ -16,7 +16,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:5173',
+    origin: 'http://localhost:5173', // Matches your frontend
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
   },
@@ -25,17 +25,20 @@ const io = new Server(server, {
 app.use(express.json());
 app.use(cors());
 
-mongoose.connect(process.env.MONGO_URI)
+// MongoDB Connection
+mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err);
     process.exit(1);
   });
 
+// Routes
 app.use('/api/auth', authRouter);
 app.use('/api/messages', messagesRouter);
 app.use('/api/groupChats', groupChatRouter);
 
+// Socket.io Logic
 const users = new Map(); // socket.id -> username
 const onlineUsers = new Set(); // Track online users
 const typingUsers = new Map(); // username -> chatId
@@ -49,10 +52,8 @@ io.on('connection', (socket) => {
     io.emit('onlineUsers', Array.from(onlineUsers));
     console.log(`${username} joined the chat`);
 
-    // Join general room
     socket.join('general');
 
-    // Join user's group chats
     const groups = await GroupChat.find({ members: username });
     groups.forEach(group => {
       socket.join(group._id.toString());
@@ -74,7 +75,6 @@ io.on('connection', (socket) => {
 
       await newMessage.save();
 
-      // Update last message in group chat
       if (message.chatId && message.chatId !== 'general') {
         await GroupChat.findByIdAndUpdate(message.chatId, {
           lastMessage: message.text,
@@ -82,7 +82,6 @@ io.on('connection', (socket) => {
         });
       }
 
-      // Emit to all clients in the room
       io.to(message.chatId || 'general').emit('newMessage', {
         ...newMessage.toObject(),
         timestamp: newMessage.timestamp.toISOString()
@@ -138,4 +137,4 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+}); 

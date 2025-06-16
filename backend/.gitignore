@@ -1,0 +1,59 @@
+# Ignore large files and binaries
+*.log
+*.sql
+*.bak
+*.zip
+*.tar
+*.gz
+*.7z
+*.rar
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.mp3
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+
+# Ignore node_modules (contains large dependency files)
+node_modules/
+
+# Ignore build output (e.g., compiled files or bundles)
+dist/
+build/
+out/
+
+# Ignore large data files or uploads
+data/
+uploads/
+temp/
+*.db
+*.dump
+
+# Ignore OS-generated files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE-specific large files
+*.sublime-workspace
+*.idea/
+*.vscode/
+
+# Ignore environment variables
+.env
+
+# Ignore large test artifacts
+coverage/
+test-results/
+
+# Ignore any file larger than 100MB (Git LFS can handle this, but for simplicity, ignore)
+*.largefile
+
+# Ignore specific large files (add filenames if known)
+bigfile.txt
+largevideo.mp4

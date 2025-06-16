@@ -76,4 +76,29 @@ router.post('/register', async (req, res) => {
   }
 });
 
+router.get('/check/:username', async (req, res) => {
+  try {
+    const user = await User.findOne({ username: req.params.username });
+    if (!user) {
+      return res.status(404).json({
+        exists: false,
+        message: 'User not found'
+      });
+    }
+    res.json({
+      exists: true,
+      user: {
+        username: user.username,
+        email: user.email
+      }
+    });
+  } catch (err) {
+    console.error('Error checking user:', err);
+    res.status(500).json({
+      message: 'Error checking user',
+      error: err.message
+    });
+  }
+});
+
 export default router;

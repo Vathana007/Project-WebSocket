@@ -4,7 +4,8 @@ const groupChatSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
+    maxlength: 50
   },
   creator: {
     type: String,
@@ -15,9 +16,9 @@ const groupChatSchema = new mongoose.Schema({
     required: true,
     validate: {
       validator: function (members) {
-        return members.length > 0;
+        return members.length >= 2; // At least creator + 1 member
       },
-      message: 'Group must have at least one member'
+      message: 'Group must have at least two members'
     }
   },
   lastMessage: {
@@ -32,11 +33,20 @@ const groupChatSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
+}, {
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Index for faster queries
+// Indexes
 groupChatSchema.index({ name: 1 });
 groupChatSchema.index({ members: 1 });
+groupChatSchema.index({ updatedAt: -1 });
+
+// Virtual for member count
+groupChatSchema.virtual('memberCount').get(function () {
+  return this.members.length;
+});
 
 const GroupChat = mongoose.model('GroupChat', groupChatSchema);
 
