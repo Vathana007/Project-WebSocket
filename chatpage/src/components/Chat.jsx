@@ -6,7 +6,6 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const Chat = () => {
-    // State management
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [socket, setSocket] = useState(null);
@@ -32,21 +31,18 @@ const Chat = () => {
     const [memberOperationStatus, setMemberOperationStatus] = useState({
         loading: false,
         error: null,
-        success: false
+        success: false,
     });
-    const [isSending, setIsSending] = useState(false); // Prevent duplicate sends
+    const [isSending, setIsSending] = useState(false);
 
-    // Refs
     const messagesEndRef = useRef(null);
     const menuRef = useRef(null);
     const navigate = useNavigate();
     const typingTimeoutRef = useRef(null);
 
-    // Constants
     const API_BASE_URL = 'http://localhost:3000/api';
     const SOCKET_URL = 'http://localhost:3000';
 
-    // Helper functions
     const formatDate = useCallback((dateString) => {
         try {
             const date = new Date(dateString);
@@ -71,7 +67,6 @@ const Chat = () => {
         }
     }, []);
 
-    // Effects
     useEffect(() => {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -107,13 +102,16 @@ const Chat = () => {
 
         const handleNewMessage = (message) => {
             const isCurrentChat = message.chatId === activeChat;
-            const isUserChat = chats.some(chat => chat.id === message.chatId);
+            const isUserChat = chats.some((chat) => chat.id === message.chatId);
 
             if (isCurrentChat) {
-                setMessages(prev => [...prev, {
-                    ...message,
-                    timestamp: new Date(message.timestamp)
-                }]);
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        ...message,
+                        timestamp: new Date(message.timestamp),
+                    },
+                ]);
                 updateChatLastMessage(message.chatId, message.text);
                 scrollToBottom();
             } else if (isUserChat) {
@@ -122,7 +120,7 @@ const Chat = () => {
         };
 
         const handleTypingEvent = (usersTyping) => {
-            setTypingUsers(usersTyping.filter(u => u !== username));
+            setTypingUsers(usersTyping.filter((u) => u !== username));
         };
 
         const handleOnlineUsers = (users) => {
@@ -130,11 +128,25 @@ const Chat = () => {
         };
 
         const handleGroupUpdated = (updatedGroup) => {
-            setChats(prev => sortChats(prev.map(chat =>
-                chat.id === updatedGroup._id.toString()
-                    ? { ...chat, members: updatedGroup.members, updatedAt: new Date(updatedGroup.updatedAt) }
-                    : chat
-            )));
+            setChats((prev) =>
+                sortChats(
+                    prev.map((chat) =>
+                        chat.id === updatedGroup._id.toString()
+                            ? {
+                                ...chat,
+                                members: updatedGroup.members,
+                                lastSeen: `${updatedGroup.members.length} members`,
+                                updatedAt: new Date(updatedGroup.updatedAt),
+                            }
+                            : chat
+                    )
+                )
+            );
+            if (updatedGroup._id.toString() === activeChat) {
+                setShowAddMemberModal(false);
+                setNewMember('');
+                setMemberOperationStatus({ loading: false, error: null, success: true });
+            }
         };
 
         const handleConnectError = (err) => {
@@ -173,12 +185,11 @@ const Chat = () => {
         return () => clearInterval(interval);
     }, [activeChat, chats]);
 
-    // API functions
     const loadUserChats = async (username) => {
         try {
             setIsLoading(true);
             const response = await axios.get(`${API_BASE_URL}/groupChats/user/${username}`);
-            const userGroups = response.data.map(group => ({
+            const userGroups = response.data.map((group) => ({
                 id: group._id.toString(),
                 name: group.name,
                 lastMessage: group.lastMessage || 'Group created',
@@ -186,10 +197,10 @@ const Chat = () => {
                 unread: 0,
                 members: group.members,
                 isGroup: true,
-                updatedAt: new Date(group.updatedAt)
+                updatedAt: new Date(group.updatedAt),
             }));
 
-            if (!userGroups.some(chat => chat.id === 'general')) {
+            if (!userGroups.some((chat) => chat.id === 'general')) {
                 userGroups.unshift({
                     id: 'general',
                     name: 'General Chat',
@@ -198,7 +209,7 @@ const Chat = () => {
                     unread: 0,
                     members: [],
                     isGroup: true,
-                    updatedAt: new Date()
+                    updatedAt: new Date(),
                 });
             }
 
@@ -214,10 +225,12 @@ const Chat = () => {
     const loadMessages = async (chatId) => {
         try {
             const response = await axios.get(`${API_BASE_URL}/messages?chatId=${chatId}`);
-            setMessages(response.data.map(msg => ({
-                ...msg,
-                timestamp: new Date(msg.timestamp)
-            })));
+            setMessages(
+                response.data.map((msg) => ({
+                    ...msg,
+                    timestamp: new Date(msg.timestamp),
+                }))
+            );
             scrollToBottom();
         } catch (err) {
             console.error('Error loading messages:', err);
@@ -226,30 +239,38 @@ const Chat = () => {
 
     const updateOnlineStatus = async () => {
         if (!socket || !activeChat) return;
-        const currentChat = chats.find(c => c.id === activeChat);
+        const currentChat = chats.find((c) => c.id === activeChat);
         if (!currentChat) return;
 
         try {
             if (currentChat.isGroup) {
-                const onlineMembers = await new Promise(resolve => {
+                const onlineMembers = await new Promise((resolve) => {
                     socket.emit('getOnlineMembers', activeChat, resolve);
                 });
-                setChats(prev => sortChats(prev.map(chat =>
-                    chat.id === activeChat
-                        ? { ...chat, lastSeen: `${onlineMembers?.length || 0} online` }
-                        : chat
-                )));
+                setChats((prev) =>
+                    sortChats(
+                        prev.map((chat) =>
+                            chat.id === activeChat
+                                ? { ...chat, lastSeen: `${onlineMembers?.length || 0} online` }
+                                : chat
+                        )
+                    )
+                );
             } else {
-                const otherUser = currentChat.members?.find(m => m !== username);
+                const otherUser = currentChat.members?.find((m) => m !== username);
                 if (otherUser) {
-                    const isOnline = await new Promise(resolve => {
+                    const isOnline = await new Promise((resolve) => {
                         socket.emit('checkUserOnline', otherUser, resolve);
                     });
-                    setChats(prev => sortChats(prev.map(chat =>
-                        chat.id === activeChat
-                            ? { ...chat, lastSeen: isOnline ? 'Online' : 'Offline' }
-                            : chat
-                    )));
+                    setChats((prev) =>
+                        sortChats(
+                            prev.map((chat) =>
+                                chat.id === activeChat
+                                    ? { ...chat, lastSeen: isOnline ? 'Online' : 'Offline' }
+                                    : chat
+                            )
+                        )
+                    );
                 }
             }
         } catch (err) {
@@ -258,19 +279,22 @@ const Chat = () => {
     };
 
     const updateChatLastMessage = (chatId, message) => {
-        setChats(prev => sortChats(prev.map(chat =>
-            chat.id === chatId
-                ? {
-                    ...chat,
-                    lastMessage: message,
-                    time: formatDate(new Date()),
-                    updatedAt: new Date()
-                }
-                : chat
-        )));
+        setChats((prev) =>
+            sortChats(
+                prev.map((chat) =>
+                    chat.id === chatId
+                        ? {
+                            ...chat,
+                            lastMessage: message,
+                            time: formatDate(new Date()),
+                            updatedAt: new Date(),
+                        }
+                        : chat
+                )
+            )
+        );
     };
 
-    // Message handling
     const handleSendMessage = async () => {
         if (!newMessage.trim() || !username || !activeChat || isSending) return;
 
@@ -282,25 +306,26 @@ const Chat = () => {
                 text: newMessage,
                 sender: username,
                 chatId: activeChat,
-                timestamp: new Date()
+                timestamp: new Date(),
             };
 
-            // Optimistic update
-            setMessages(prev => [...prev, tempMessage]);
+            setMessages((prev) => [...prev, tempMessage]);
             updateChatLastMessage(activeChat, newMessage);
             scrollToBottom();
 
-            // Send to server via socket
-            socket?.emit('chatMessage', {
-                text: newMessage,
-                chatId: activeChat
-            }, (response) => {
-                if (response?.error) {
-                    throw new Error(response.error);
+            socket?.emit(
+                'chatMessage',
+                {
+                    text: newMessage,
+                    chatId: activeChat,
+                },
+                (response) => {
+                    if (response?.error) {
+                        throw new Error(response.error);
+                    }
                 }
-            });
+            );
 
-            // Clear input and typing indicator
             socket?.emit('stopTyping', activeChat);
             if (typingTimeoutRef.current) {
                 clearTimeout(typingTimeoutRef.current);
@@ -309,7 +334,7 @@ const Chat = () => {
             setNewMessage('');
         } catch (err) {
             console.error('Error sending message:', err);
-            setMessages(prev => prev.filter(msg => msg._id !== tempId));
+            setMessages((prev) => prev.filter((msg) => msg._id !== tempId));
         } finally {
             setIsSending(false);
         }
@@ -337,7 +362,6 @@ const Chat = () => {
         }
     };
 
-    // Chat management
     const handleCreateChat = async () => {
         if (!newChatName.trim()) return;
 
@@ -346,7 +370,7 @@ const Chat = () => {
                 const response = await axios.post(`${API_BASE_URL}/groupChats`, {
                     name: newChatName.trim(),
                     creator: username,
-                    members: groupMembers
+                    members: groupMembers,
                 });
 
                 socket?.emit('joinGroup', response.data._id.toString());
@@ -359,9 +383,9 @@ const Chat = () => {
                     unread: 0,
                     members: response.data.members,
                     isGroup: true,
-                    updatedAt: new Date()
+                    updatedAt: new Date(),
                 };
-                setChats(prev => sortChats([...prev, newChat]));
+                setChats((prev) => sortChats([...prev, newChat]));
                 setActiveChat(response.data._id.toString());
             } else {
                 const newChatId = `chat_${Date.now()}`;
@@ -373,9 +397,9 @@ const Chat = () => {
                     unread: 0,
                     members: [username],
                     isGroup: false,
-                    updatedAt: new Date()
+                    updatedAt: new Date(),
                 };
-                setChats(prev => sortChats([...prev, newChat]));
+                setChats((prev) => sortChats([...prev, newChat]));
                 setActiveChat(newChatId);
             }
 
@@ -400,36 +424,24 @@ const Chat = () => {
                 throw new Error('User not found');
             }
 
-            const currentGroup = chats.find(chat => chat.id === activeChat);
+            const currentGroup = chats.find((chat) => chat.id === activeChat);
             if (currentGroup?.members.includes(newMember)) {
                 throw new Error('User already in group');
             }
 
-            const response = await axios.post(
-                `${API_BASE_URL}/groupChats/${activeChat}/add-member`,
-                { username: newMember }
-            );
+            const response = await axios.post(`${API_BASE_URL}/groupChats/${activeChat}/add-member`, {
+                username: newMember,
+            });
 
-            setChats(prev => sortChats(prev.map(chat =>
-                chat.id === activeChat
-                    ? {
-                        ...chat,
-                        members: response.data.members,
-                        lastSeen: `${response.data.members.length} members`,
-                        updatedAt: new Date()
-                    }
-                    : chat
-            )));
-
+            socket?.emit('joinGroup', activeChat);
             setNewMember('');
             setMemberOperationStatus({ loading: false, error: null, success: true });
-            setTimeout(() => setShowAddMemberModal(false), 1500);
         } catch (error) {
             console.error('Error adding member:', error);
             setMemberOperationStatus({
                 loading: false,
                 error: error.response?.data?.message || error.message || 'Failed to add member',
-                success: false
+                success: false,
             });
         }
     };
@@ -438,21 +450,11 @@ const Chat = () => {
         if (!memberToRemove || memberToRemove === username) return;
 
         try {
-            const response = await axios.post(
-                `${API_BASE_URL}/groupChats/${activeChat}/remove-member`,
-                { username: memberToRemove }
-            );
+            const response = await axios.post(`${API_BASE_URL}/groupChats/${activeChat}/remove-member`, {
+                username: memberToRemove,
+            });
 
-            setChats(prev => sortChats(prev.map(chat =>
-                chat.id === activeChat
-                    ? {
-                        ...chat,
-                        members: response.data.members,
-                        lastSeen: `${response.data.members.length} members`,
-                        updatedAt: new Date()
-                    }
-                    : chat
-            )));
+            socket?.emit('joinGroup', activeChat);
         } catch (error) {
             console.error('Error removing member:', error);
             alert(error.response?.data?.message || 'Failed to remove member');
@@ -469,25 +471,20 @@ const Chat = () => {
                 return;
             }
 
-            const currentChat = chats.find(c => c.id === activeChat);
+            const currentChat = chats.find((c) => c.id === activeChat);
 
             if (currentChat?.isGroup) {
                 await axios.post(`${API_BASE_URL}/groupChats/${activeChat}/add-member`, {
-                    username: friendUsername
+                    username: friendUsername,
                 });
 
-                setChats(prev => sortChats(prev.map(chat =>
-                    chat.id === activeChat
-                        ? { ...chat, members: [...new Set([...chat.members, friendUsername])] }
-                        : chat
-                )));
-
+                socket?.emit('joinGroup', activeChat);
                 alert(`${friendUsername} added to the group!`);
             } else {
                 const response = await axios.post(`${API_BASE_URL}/groupChats`, {
                     name: `${username} and ${friendUsername}`,
                     creator: username,
-                    members: [username, friendUsername]
+                    members: [username, friendUsername],
                 });
 
                 const newChat = {
@@ -498,13 +495,13 @@ const Chat = () => {
                     unread: 0,
                     members: [username, friendUsername],
                     isGroup: true,
-                    updatedAt: new Date()
+                    updatedAt: new Date(),
                 };
 
-                setChats(prev => sortChats([...prev, newChat]));
+                setChats((prev) => sortChats([...prev, newChat]));
                 setActiveChat(response.data._id.toString());
                 setMessages([]);
-                socket?.emit('joinGroup', response.data._id);
+                socket?.emit('joinGroup', response.data._id.toString());
             }
 
             setFriendUsername('');
@@ -530,11 +527,10 @@ const Chat = () => {
         navigate('/login');
     };
 
-    const filteredChats = chats.filter(chat =>
+    const filteredChats = chats.filter((chat) =>
         chat.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    // Render functions
     if (!username) {
         return (
             <div className="flex items-center justify-center h-screen bg-gray-100">
@@ -553,14 +549,19 @@ const Chat = () => {
 
     return (
         <div className="flex h-screen bg-gray-50">
-            {/* Sidebar */}
-            <div className={`${showSidebar ? 'w-80' : 'w-20'} bg-white border-r border-gray-200 transition-all duration-300 flex flex-col`}>
-                {/* Sidebar Header */}
+            <div
+                className={`${showSidebar ? 'w-80' : 'w-20'
+                    } bg-white border-r border-gray-200 transition-all duration-300 flex flex-col`}
+            >
                 <div className="p-4 border-b border-gray-200 bg-blue-100 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                         <div className="relative">
                             {logo ? (
-                                <img src={logo} alt="User" className="w-10 h-10 rounded-full object-cover border-2 border-blue-500 cursor-pointer" />
+                                <img
+                                    src={logo}
+                                    alt="User"
+                                    className="w-10 h-10 rounded-full object-cover border-2 border-blue-500 cursor-pointer"
+                                />
                             ) : (
                                 <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold cursor-pointer">
                                     {username.charAt(0).toUpperCase()}
@@ -590,8 +591,6 @@ const Chat = () => {
                         </button>
                     )}
                 </div>
-
-                {/* Search Bar */}
                 {showSidebar && (
                     <div className="p-3 border-b border-gray-200">
                         <div className="relative">
@@ -607,10 +606,8 @@ const Chat = () => {
                         </div>
                     </div>
                 )}
-
-                {/* Chat List */}
                 <div className="flex-1 overflow-y-auto">
-                    {filteredChats.map(chat => (
+                    {filteredChats.map((chat) => (
                         <div
                             key={chat.id}
                             onClick={() => {
@@ -619,7 +616,8 @@ const Chat = () => {
                                     socket?.emit('joinGroup', chat.id);
                                 }
                             }}
-                            className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 flex items-center ${activeChat === chat.id ? 'bg-blue-50' : ''}`}
+                            className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 flex items-center ${activeChat === chat.id ? 'bg-blue-50' : ''
+                                }`}
                             aria-label={`Chat with ${chat.name}`}
                         >
                             <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold mr-3 cursor-pointer">
@@ -629,7 +627,9 @@ const Chat = () => {
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between">
                                         <h3 className="font-medium text-gray-900 truncate cursor-pointer">{chat.name}</h3>
-                                        <span className="text-xs text-gray-500 whitespace-nowrap ml-2 cursor-default">{formatDate(chat.updatedAt)}</span>
+                                        <span className="text-xs text-gray-500 whitespace-nowrap ml-2 cursor-default">
+                                            {formatDate(chat.updatedAt)}
+                                        </span>
                                     </div>
                                     <p className="text-sm text-gray-600 truncate cursor-pointer">{chat.lastMessage}</p>
                                     <div className="flex justify-between items-center mt-1">
@@ -647,8 +647,6 @@ const Chat = () => {
                         </div>
                     ))}
                 </div>
-
-                {/* New Chat Buttons */}
                 {showSidebar && (
                     <div className="p-3 border-t border-gray-200 bg-gray-50 space-y-2">
                         <button
@@ -676,10 +674,7 @@ const Chat = () => {
                     </div>
                 )}
             </div>
-
-            {/* Main Chat Area */}
             <div className="flex-1 flex flex-col">
-                {/* Chat Header */}
                 <div className="p-4 border-b border-gray-200 bg-white flex items-center justify-between shadow-sm">
                     <div className="flex items-center">
                         {!showSidebar && (
@@ -693,12 +688,12 @@ const Chat = () => {
                         )}
                         <div>
                             <h3 className="font-semibold text-lg cursor-default">
-                                {chats.find(c => c.id === activeChat)?.name || 'Chat'}
+                                {chats.find((c) => c.id === activeChat)?.name || 'Chat'}
                             </h3>
                             <p className="text-xs text-gray-500 cursor-default">
                                 {typingUsers.length > 0
                                     ? `${typingUsers.join(', ')} typing...`
-                                    : chats.find(c => c.id === activeChat)?.lastSeen || ''}
+                                    : chats.find((c) => c.id === activeChat)?.lastSeen || ''}
                             </p>
                         </div>
                     </div>
@@ -712,7 +707,7 @@ const Chat = () => {
                         </button>
                         {showMenu && (
                             <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
-                                {activeChat && chats.find(c => c.id === activeChat)?.isGroup && (
+                                {activeChat && chats.find((c) => c.id === activeChat)?.isGroup && (
                                     <button
                                         onClick={() => {
                                             setShowAddMemberModal(true);
@@ -753,8 +748,6 @@ const Chat = () => {
                         )}
                     </div>
                 </div>
-
-                {/* Messages Area */}
                 <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
                     {messages.length === 0 ? (
                         <div className="flex items-center justify-center h-full">
@@ -767,12 +760,11 @@ const Chat = () => {
                                 className={`flex mb-4 ${msg.sender === username ? 'justify-end' : 'justify-start'}`}
                             >
                                 <div
-                                    className={`max-w-md rounded-lg p-3 ${msg.sender === username ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white shadow rounded-bl-none'} cursor-default`}
+                                    className={`max-w-md rounded-lg p-3 ${msg.sender === username ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white shadow rounded-bl-none'
+                                        } cursor-default`}
                                 >
                                     {msg.sender !== username && (
-                                        <div className="font-semibold text-sm text-blue-700 mb-1 cursor-default">
-                                            {msg.sender}
-                                        </div>
+                                        <div className="font-semibold text-sm text-blue-700 mb-1 cursor-default">{msg.sender}</div>
                                     )}
                                     <div>{msg.text}</div>
                                     <div className="flex justify-end items-center mt-1 space-x-1 text-xs">
@@ -787,8 +779,6 @@ const Chat = () => {
                     )}
                     <div ref={messagesEndRef} />
                 </div>
-
-                {/* Message Input */}
                 <div className="p-4 border-t border-gray-200 bg-white">
                     <div className="flex items-center space-x-2">
                         <button className="p-2 text-gray-500 hover:text-blue-600 cursor-pointer" aria-label="Attach file">
@@ -809,7 +799,8 @@ const Chat = () => {
                         <button
                             onClick={handleSendMessage}
                             disabled={!newMessage.trim() || isSending}
-                            className={`p-2 rounded-full ${newMessage.trim() && !isSending ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-400'} cursor-pointer`}
+                            className={`p-2 rounded-full ${newMessage.trim() && !isSending ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-400'
+                                } cursor-pointer`}
                             aria-label="Send message"
                         >
                             <FiSend size={20} />
@@ -817,15 +808,11 @@ const Chat = () => {
                     </div>
                 </div>
             </div>
-
-            {/* Create Chat Modal */}
             {showCreateChatModal && (
                 <div className="fixed inset-0 bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
                     <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-2xl font-bold text-gray-800">
-                                {isGroupChat ? 'Create New Group' : 'New Chat'}
-                            </h3>
+                            <h3 className="text-2xl font-bold text-gray-800">{isGroupChat ? 'Create New Group' : 'New Chat'}</h3>
                             <button
                                 onClick={() => {
                                     setShowCreateChatModal(false);
@@ -835,12 +822,17 @@ const Chat = () => {
                                 className="text-gray-500 transition duration-200 hover:text-gray-700 cursor-pointer"
                                 aria-label="Close modal"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-6 w-6"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                             </button>
                         </div>
-
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -854,12 +846,9 @@ const Chat = () => {
                                     placeholder={isGroupChat ? 'e.g. Project Team' : 'e.g. Personal Chat'}
                                 />
                             </div>
-
                             {isGroupChat && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Add Members
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Add Members</label>
                                     <div className="flex mb-2">
                                         <input
                                             type="text"
@@ -882,12 +871,12 @@ const Chat = () => {
                                                 }
                                             }}
                                             disabled={!newMember.trim()}
-                                            className={`px-4 py-2 rounded-r-lg cursor-pointer ${newMember.trim() ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300'} text-white transition-colors`}
+                                            className={`px-4 py-2 rounded-r-lg cursor-pointer ${newMember.trim() ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300'
+                                                } text-white transition-colors`}
                                         >
                                             <FiPlus size={20} />
                                         </button>
                                     </div>
-
                                     {groupMembers.length > 0 && (
                                         <div className="bg-gray-50 rounded-lg p-3 max-h-40 overflow-y-auto">
                                             <h4 className="text-sm font-medium text-gray-700 mb-2">
@@ -895,7 +884,10 @@ const Chat = () => {
                                             </h4>
                                             <div className="space-y-2">
                                                 {groupMembers.map((member, index) => (
-                                                    <div key={index} className="flex items-center justify-between bg-white p-2 rounded-md shadow-sm">
+                                                    <div
+                                                        key={index}
+                                                        className="flex items-center justify-between bg-white p-2 rounded-md shadow-sm"
+                                                    >
                                                         <div className="flex items-center">
                                                             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-medium mr-2">
                                                                 {member.charAt(0).toUpperCase()}
@@ -903,11 +895,20 @@ const Chat = () => {
                                                             <span className="text-sm font-medium">{member}</span>
                                                         </div>
                                                         <button
-                                                            onClick={() => setGroupMembers(groupMembers.filter(m => m !== member))}
+                                                            onClick={() => setGroupMembers(groupMembers.filter((m) => m !== member))}
                                                             className="text-gray-400 transition duration-200 hover:text-red-500 transition-colors cursor-pointer"
                                                         >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                            <svg
+                                                                xmlns="http://www.w3.org/2000/svg"
+                                                                className="h-5 w-5"
+                                                                viewBox="0 0 20 20"
+                                                                fill="currentColor"
+                                                            >
+                                                                <path
+                                                                    fillRule="evenodd"
+                                                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                                                    clipRule="evenodd"
+                                                                />
                                                             </svg>
                                                         </button>
                                                     </div>
@@ -918,7 +919,6 @@ const Chat = () => {
                                 </div>
                             )}
                         </div>
-
                         <div className="mt-6 flex justify-end space-x-3">
                             <button
                                 onClick={() => {
@@ -933,7 +933,10 @@ const Chat = () => {
                             <button
                                 onClick={handleCreateChat}
                                 disabled={!newChatName.trim()}
-                                className={`px-4 py-2 rounded-lg cursor-pointer ${newChatName.trim() ? 'bg-gradient-to-r from-blue-600 to-blue-500 transition duration-200 hover:from-blue-700 hover:to-blue-600' : 'bg-gray-300'} text-white shadow-md transition-all`}
+                                className={`px-4 py-2 rounded-lg cursor-pointer ${newChatName.trim()
+                                        ? 'bg-gradient-to-r from-blue-600 to-blue-500 transition duration-200 hover:from-blue-700 hover:to-blue-600'
+                                        : 'bg-gray-300'
+                                    } text-white shadow-md transition-all`}
                             >
                                 {isGroupChat ? 'Create Group' : 'Create Chat'}
                             </button>
@@ -941,27 +944,22 @@ const Chat = () => {
                     </div>
                 </div>
             )}
-
-            {/* Add Member Modal */}
             {showAddMemberModal && (
                 <div className="fixed inset-0 bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-96">
                         <h3 className="text-xl font-semibold mb-4 text-center">
-                            Add Member to {chats.find(c => c.id === activeChat)?.name}
+                            Add Member to {chats.find((c) => c.id === activeChat)?.name}
                         </h3>
-
                         {memberOperationStatus.error && (
                             <div className="bg-red-100 text-red-700 p-2 rounded-lg mb-4 text-sm">
                                 {memberOperationStatus.error}
                             </div>
                         )}
-
                         {memberOperationStatus.success && (
                             <div className="bg-green-100 text-green-700 p-2 rounded-lg mb-4 text-sm">
                                 Member added successfully!
                             </div>
                         )}
-
                         <div className="mb-4">
                             <input
                                 type="text"
@@ -973,10 +971,11 @@ const Chat = () => {
                                 onKeyPress={(e) => e.key === 'Enter' && handleAddMember()}
                             />
                         </div>
-
                         <div className="mb-4 max-h-40 overflow-y-auto">
-                            <h4 className="font-medium mb-2">Current Members ({chats.find(c => c.id === activeChat)?.members.length}):</h4>
-                            {chats.find(c => c.id === activeChat)?.members.map((member, index) => (
+                            <h4 className="font-medium mb-2">
+                                Current Members ({chats.find((c) => c.id === activeChat)?.members.length}):
+                            </h4>
+                            {chats.find((c) => c.id === activeChat)?.members.map((member, index) => (
                                 <div key={index} className="flex items-center justify-between p-2 bg-gray-100 rounded mb-1">
                                     <span>{member}</span>
                                     {member !== username && (
@@ -991,7 +990,6 @@ const Chat = () => {
                                 </div>
                             ))}
                         </div>
-
                         <div className="flex justify-end space-x-3">
                             <button
                                 onClick={() => {
@@ -1008,8 +1006,8 @@ const Chat = () => {
                                 onClick={handleAddMember}
                                 disabled={!newMember.trim() || memberOperationStatus.loading}
                                 className={`px-4 py-2 rounded-lg cursor-pointer ${newMember.trim() && !memberOperationStatus.loading
-                                    ? 'bg-blue-600 text-white transition duration-200 hover:bg-blue-700'
-                                    : 'bg-gray-300 text-gray-500'
+                                        ? 'bg-blue-600 text-white transition duration-200 hover:bg-blue-700'
+                                        : 'bg-gray-300 text-gray-500'
                                     }`}
                             >
                                 {memberOperationStatus.loading ? 'Adding...' : 'Add Member'}
@@ -1018,8 +1016,6 @@ const Chat = () => {
                     </div>
                 </div>
             )}
-
-            {/* Add Friend Modal */}
             {showAddFriendModal && (
                 <div className="fixed inset-0 bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-96">
@@ -1034,7 +1030,9 @@ const Chat = () => {
                             />
                             {friendUsername && (
                                 <div className="p-2 bg-gray-100 rounded-lg mb-2">
-                                    <p className="text-sm">Add: <span className="font-medium">{friendUsername}</span></p>
+                                    <p className="text-sm">
+                                        Add: <span className="font-medium">{friendUsername}</span>
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -1048,7 +1046,10 @@ const Chat = () => {
                             <button
                                 onClick={handleAddFriend}
                                 disabled={!friendUsername.trim() || username === friendUsername}
-                                className={`px-4 py-2 rounded-lg cursor-pointer ${friendUsername.trim() && username !== friendUsername ? 'bg-blue-600 text-white transition duration-200 hover:bg-blue-700' : 'bg-gray-300 text-gray-500'} cursor-pointer`}
+                                className={`px-4 py-2 rounded-lg cursor-pointer ${friendUsername.trim() && username !== friendUsername
+                                        ? 'bg-blue-600 text-white transition duration-200 hover:bg-blue-700'
+                                        : 'bg-gray-300 text-gray-500'
+                                    } cursor-pointer`}
                             >
                                 Add Friend
                             </button>
@@ -1056,8 +1057,6 @@ const Chat = () => {
                     </div>
                 </div>
             )}
-
-            {/* Logout Confirmation Modal */}
             {showLogoutModal && (
                 <div className="fixed inset-0 bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg shadow-xl p-6 w-96">

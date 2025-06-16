@@ -25,23 +25,21 @@ export const io = new Server(server, {
 app.use(express.json());
 app.use(cors());
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose
+  .connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err);
     process.exit(1);
   });
 
-// Routes
 app.use('/api/auth', authRouter);
 app.use('/api/messages', messagesRouter);
 app.use('/api/groupChats', groupChatRouter);
 
-// Socket.io Logic
-const users = new Map(); // socket.id -> username
-const onlineUsers = new Set(); // Track online users
-const typingUsers = new Map(); // username -> chatId
+const users = new Map();
+const onlineUsers = new Set();
+const typingUsers = new Map();
 
 io.on('connection', (socket) => {
   console.log('New user connected:', socket.id);
@@ -52,13 +50,11 @@ io.on('connection', (socket) => {
     io.emit('onlineUsers', Array.from(onlineUsers));
     console.log(`${username} joined the chat`);
 
-    // Join general chat by default
     socket.join('general');
 
-    // Join all groups the user is a member of
     try {
       const groups = await GroupChat.find({ members: username });
-      groups.forEach(group => {
+      groups.forEach((group) => {
         socket.join(group._id.toString());
         console.log(`${username} joined group ${group.name}`);
       });
@@ -79,32 +75,29 @@ io.on('connection', (socket) => {
         text: message.text,
         sender: username,
         chatId: message.chatId || 'general',
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       await newMessage.save();
 
-      // Update the group chat's last message
       if (message.chatId && message.chatId !== 'general') {
         await GroupChat.findByIdAndUpdate(message.chatId, {
           lastMessage: message.text,
-          updatedAt: new Date()
+          updatedAt: new Date(),
         });
-        
-        // Emit to all members of the group
+
         io.to(message.chatId).emit('newMessage', {
           ...newMessage.toObject(),
-          timestamp: newMessage.timestamp.toISOString()
+          timestamp: newMessage.timestamp.toISOString(),
         });
       } else {
-        // For general chat
         io.to('general').emit('newMessage', {
           ...newMessage.toObject(),
-          timestamp: newMessage.timestamp.toISOString()
+          timestamp: newMessage.timestamp.toISOString(),
         });
       }
 
-      callback?.({ success: true }); // Acknowledge successful send
+      callback?.({ success: true });
     } catch (err) {
       console.error('Error saving message:', err);
       callback?.({ error: 'Failed to save message' });
@@ -134,7 +127,11 @@ io.on('connection', (socket) => {
     }
 
     const room = io.sockets.adapter.rooms.get(chatId);
-    const members = room ? Array.from(room).map(socketId => users.get(socketId)).filter(Boolean) : [];
+    const members = room
+      ? Array.from(room)
+        .map((socketId) => users.get(socketId))
+        .filter(Boolean)
+      : [];
     callback(members);
   });
 

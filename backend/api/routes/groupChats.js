@@ -1,10 +1,10 @@
 import express from 'express';
 import GroupChat from '../models/GroupChat.js';
 import User from '../models/User.js';
+import { io } from '../../server.js';
 
 const router = express.Router();
 
-// Create new group chat
 router.post('/', async (req, res) => {
   const { name, creator, members } = req.body;
 
@@ -22,7 +22,7 @@ router.post('/', async (req, res) => {
     if (invalidMembers.length > 0) {
       return res.status(400).json({
         message: 'Some users do not exist',
-        invalidMembers
+        invalidMembers,
       });
     }
 
@@ -37,10 +37,13 @@ router.post('/', async (req, res) => {
       creator,
       members: allMembers,
       lastMessage: 'Group created!',
-      updatedAt: new Date()
+      updatedAt: new Date(),
     });
 
     await newGroup.save();
+
+    io.to(newGroup._id.toString()).emit('groupUpdated', newGroup);
+
     res.status(201).json(newGroup);
   } catch (err) {
     console.error('Error creating group:', err);
@@ -48,9 +51,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Add member to group
 router.post('/:id/add-member', async (req, res) => {
-  console.log(`Received POST request for /api/groupChats/${req.params.id}/add-member`); // Debug log
+  console.log(`Received POST request for /api/groupChats/${req.params.id}/add-member`);
   const { username } = req.body;
 
   try {
@@ -78,21 +80,18 @@ router.post('/:id/add-member', async (req, res) => {
     await group.save();
     console.log(`Successfully added ${username} to group ${req.params.id}`);
 
-    // Emit group update to connected clients
     io.to(group._id.toString()).emit('groupUpdated', group);
 
     res.json(group);
   } catch (err) {
     console.error('Error adding member:', err);
-    res.status(500).json({ message: 'Failed to add member' });
+    res.status(500).json({ message: 'Failed to add member', error: err.message });
   }
 });
 
-// Get all groups for a user
 router.get('/user/:username', async (req, res) => {
   try {
-    const groups = await GroupChat.find({ members: req.params.username })
-      .sort({ updatedAt: -1 });
+    const groups = await GroupChat.find({ members: req.params.username }).sort({ updatedAt: -1 });
     res.json(groups);
   } catch (err) {
     console.error('Error fetching groups:', err);
@@ -100,7 +99,6 @@ router.get('/user/:username', async (req, res) => {
   }
 });
 
-// Get group by ID
 router.get('/:id', async (req, res) => {
   try {
     const group = await GroupChat.findById(req.params.id);
@@ -114,7 +112,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Remove member from group
 router.post('/:id/remove-member', async (req, res) => {
   const { username } = req.body;
 
@@ -128,7 +125,7 @@ router.post('/:id/remove-member', async (req, res) => {
       return res.status(400).json({ message: 'User not in group' });
     }
 
-    group.members = group.members.filter(member => member !== username);
+    group.members = group.members.filter((member) => member !== username);
     group.updatedAt = new Date();
     await group.save();
 
@@ -137,8 +134,8 @@ router.post('/:id/remove-member', async (req, res) => {
     res.json(group);
   } catch (err) {
     console.error('Error removing member:', err);
-    res.status(500).json({ message: 'Failed to remove member' });
+    res.status(500).json({ message: 'Failed to remove member', error: err.message });
   }
 });
 
-export default router; 
+export default router;
